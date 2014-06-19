@@ -1,0 +1,76 @@
+<?php
+/**
+ * @file
+ */
+
+
+/**
+ * Implements hook_install().
+ */
+function cvm_field_install() {
+
+  // Need to tell drupal about my new field first :(.
+  field_cache_clear();
+  field_associate_fields('cvm_field');
+
+  // Check if our field is not already created.
+  if (!field_info_field(CVM_FIELD_NAME)) {
+    $field = array(
+      'field_name' => CVM_FIELD_NAME,
+      'type' => 'cvm_field_cvm',
+      'cardinality' => FIELD_CARDINALITY_UNLIMITED,
+    );
+    $the_field = field_create_field($field);
+  }
+
+}
+
+/**
+ * Implements hook_field_schema().
+ *
+ * Defines the database schema of the field, using the format used by the
+ * Schema API.
+ *
+ */
+function cvm_field_field_schema($field) {
+
+
+  $schema = array(
+    'columns' => array(
+      'view_mode' => array(
+        'description' => 'The view mode to use when context validates',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+      'context' => array(
+        'description' => 'The context to authenticate against',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+      ),
+    ),
+    'indexes' => array(
+      'view_mode' => array('view_mode'),
+      'context' => array('context'),
+      'view_context' => array('view_mode', 'context'),
+    ),
+    'foreign keys' => array(
+      'context' => array(
+        'table' => 'context',
+        'columns' => array(
+          'context' => 'name',
+        ),
+      ),
+      'view_mode' => array(
+        'table' => 'ds_view_modes',
+        'columns' => array(
+          'view_mode' => 'view_mode'
+        ),
+      ),
+    ),
+  );
+
+  return $schema;
+
+}

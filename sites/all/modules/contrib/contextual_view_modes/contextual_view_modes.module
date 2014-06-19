@@ -1,0 +1,192 @@
+<?php
+/**
+ * @file
+ * @author - sherakama
+ * Todo::::
+ *
+ *     4. Create global content type default settings
+ *
+ **/
+
+/**
+ * Implements hook_menu().
+ */
+function contextual_view_modes_menu() {
+  $items = array();
+
+  $items['admin/structure/cvm'] = array(
+    'title' => 'Contextual View Modes',
+    'description' => 'Settings and configuration options for contextual view modes',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('contextual_view_modes_settings'),
+    'file' => 'contextual_view_modes.admin.inc',
+    'access arguments' => array('administer cvm settings'),
+  );
+
+  return $items;
+}
+
+
+/**
+ * Implementation of hook_perm().
+ */
+function contextual_view_modes_permission() {
+  return array(
+    'administer cvm settings' => array(
+      'title' => t('Administer Contextual View Modes'),
+      'description' => t('Allow administration of contextual view mode settings'),
+      ),
+    'set view modes per node' => array(
+        'title' => t('Contextual View Modes Per Node'),
+        'description' => t('Allow changing/setting contextual view mode per node'),
+      )
+    );
+}
+
+
+/**
+ * @param  $form  The form array
+ * @param $form_state  The form state
+ *
+ */
+
+function contextual_view_modes_form_node_form_alter(&$form, $form_state, $form_id) {
+
+  $lang = $form['language']['#value'];
+  $enabled_types = variable_get('cvm_enabled_content_types', array());
+  $type = $form['type']['#value'];
+
+  // We only want this to show up on enabled content types
+  if(!in_array($type, $enabled_types)) {
+    return;
+  }
+
+  $form['contextual_display'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Contextual View Modes Settings'),
+    '#collapsible' => TRUE,
+    '#collapsed' => TRUE,
+    '#group' => 'additional_settings',
+    '#weight' => 100,
+  );
+
+
+   // If there are global settings for this content type lets show the user here.
+  $global_cvm = variable_get('cvm_global_content_type_modes', array());
+  if (isset($global_cvm[$type])) {
+    // There are global settings for this content type. Lets show the user.
+
+    $data = array();
+    foreach ($global_cvm[$type] as $context_name => $vm) {
+      $data[] = t('The view mode: !vm is set for context: !c', array('!vm' => "<strong>" . $vm . "</strong>", "!c" => "<strong>" . $context_name . "</strong>"));
+    }
+
+    $form['contextual_display']['showntell'] = array(
+      '#markup' => theme_item_list(array(
+        'items' => $data,
+        'type' => 'ul',
+        'title' => t('Enabled Global Contextual View Modes'),
+        'attributes' => array()
+        )
+      ),
+    );
+
+  }
+
+
+
+  // Move all contextual view mode fields into the group.
+  $fields = $form_state['field'];
+
+  foreach ($fields as $field_name => $settings) {
+    if ($settings[$lang]['field']['type'] == "cvm_field_cvm") {
+      $form['contextual_display'][$field_name] = $form[$field_name];
+      unset($form[$field_name]);
+    }
+  }
+
+}
+
+
+/**
+ * Alters the build one more time to support view modes per node with contexts
+ * @param  $build  The build array that drupal_render() expects
+ */
+function contextual_view_modes_node_view_alter(&$build) {
+
+  if (module_exists('context_mobile_detect')) {
+    context_mobile_detect_context_page_condition();
+  }
+
+  // To avoid an endless loop do this vvvvvv.
+  static $call_once;
+  $call_once++;
+  if ($call_once >= 2) {
+    return;
+  }
+
+  // Only work with nodes when on page view.
+  $a0 = arg(0);
+  $a1 = arg(1);
+  if ($a0 !== "node" || !is_numeric($a1)) {
+    return;
+  }
+
+  // Get current node.
+  $node = $build['#node'];
+
+  // If v is not set then we want to run our version of ds_extras display switch.
+  if (isset($_GET['v'])) {
+    // V is set. Dont eff with that.
+    return;
+  }
+
+  // Check for the cvm field.
+  if (!isset($node->{CVM_FIELD_NAME})) {
+    return;
+  }
+
+  // Get all of the contexts that have a match.
+  $contexts = context_active_contexts();
+
+  // Loop through each context and see if this node has a view mode assigned
+  // to a valid context.
+  foreach ($contexts as $context_name => $context) {
+
+
+
+    // Avoid php errors...
+    if (empty($node->{CVM_FIELD_NAME}[$node->language])) {
+      continue;
+    }
+
+    foreach ($node->{CVM_FIELD_NAME}[$node->language] as $k => $values) {
+      if ($values['context'] == $context_name) {
+        $node->ds_switch = $context_name;
+        $build = node_view($node, $node->ds_switch);
+        // Take only the first match.
+        return;
+      }
+    }
+  }
+
+  // If we get here then there has not been a setting for this specific node.
+  // Check to see if there is a global context we need to do.
+
+  $global_cvm = variable_get('cvm_global_content_type_modes', array());
+  if (isset($global_cvm[$node->type])) {
+    // We found settings...
+
+    foreach ($contexts as $context_name => $context) {
+      if (isset($global_cvm[$node->type][$context_name])) {
+        $node->ds_switch = $global_cvm[$node->type][$context_name];
+        $build = node_view($node, $node->ds_switch);
+        // Take only the first match.
+        return;
+      }
+    }
+
+  }
+
+}
+

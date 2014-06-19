@@ -1,0 +1,20 @@
+name = Contextual View Modes
+description = Creates the ability for authors to change view modes on nodes by context (module) conditions
+package = Context
+version = "7.x-1.2"
+core = 7.x
+files[] = contextual_view_modes.module
+files[] = contextual_view_modes.install
+files[] = contextual_view_modes.admin.inc
+
+dependencies[] = "context"
+dependencies[] = "ds"
+dependencies[] = "ds_extras"
+dependencies[] = "cvm_field"
+
+; Information added by Drupal.org packaging script on 2013-12-18
+version = "7.x-1.2-alpha1+9-dev"
+core = "7.x"
+project = "contextual_view_modes"
+datestamp = "1387333105"
+

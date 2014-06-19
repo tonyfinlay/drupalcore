@@ -1,0 +1,256 @@
+<?php
+/**
+ * @file
+ */
+
+DEFINE('CVM_FIELD_NAME', 'field_cvm_cvm'); // The fieldname to look for
+
+
+/**
+ * Implements hook_field_info().
+ */
+function cvm_field_field_info() {
+  return array(
+    'cvm_field_cvm' => array(
+      'label' => t('Contextual View Modes'),
+      'description' => t('Allows users to select a view mode and a context to apply it on'),
+      'settings' => array(),
+      'instance_settings' => array(
+        'cardinality' => FIELD_CARDINALITY_UNLIMITED,
+      ),
+      'default_widget' => 'cvm_field_widget',
+      'default_formatter' => 'cvm_field_no_output',
+      'no_ui' => TRUE,
+    ),
+  );
+}
+
+
+/**
+ * Implements hook_field_validate().
+ */
+function cvm_field_field_validate($entity_type, $entity, $field, $instance, $langcode, $items, &$errors) {
+
+  // For storing the context keys. Con't have more then one use of the context.
+  $found = array();
+
+  foreach ($items as $delta => $item) {
+    if (!empty($item['context']) && $item['context'] !== "none") {
+
+      if (in_array($item['context'], $found)) {
+        $errors[$field['field_name']][$langcode][$delta][] = array(
+          'error' => 'cvm_field_invalid',
+          'message' => t("Contextual View Mode Error: %itm context already in use!", array("%itm" => $item['context'])),
+        );
+      }
+
+      $found[] = $item['context'];
+
+    }
+  }
+}
+
+
+/**
+ * Implements hook_field_is_empty().
+ */
+function cvm_field_field_is_empty($item, $field) {
+
+  if (empty($item['context']) || $item['context'] == "none") {
+    return TRUE;
+  }
+
+  if (empty($item['view_mode']) || $item['view_mode'] == "none") {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+
+/**
+ * Implements hook_field_formatter_info().
+ *
+ * We need to tell Drupal that we have a formatter for this field
+ *
+ * @see field_example_field_formatter_view()
+ */
+function cvm_field_field_formatter_info() {
+  return array(
+    'cvm_field_default' => array(
+      'label' => t('Default'),
+      'field types' => array('cvm_field_cvm'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_field_formatter_view().
+ */
+function cvm_field_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  $element = array();
+  $settings = $display['settings'];
+
+  switch ($display['type']) {
+    case 'cvm_field_default':
+      foreach ($items as $delta => $item) {
+        $element[$delta] = array(
+         // '#theme' => 'cvm_field_theme_cvm_field',
+          '#data' => $item['context'],
+          '#markup' => cvm_field_default_markup($entity_type, $entity, $field, $instance, $langcode, $items, $display),
+         // '#some_setting' => $settings['some_settig'],
+        );
+      }
+      break;
+  }
+
+  return $element;
+}
+
+
+/**
+ * Returns the output for the field formatter
+ * @param  [type] $entity_type [description]
+ * @param  [type] $entity      [description]
+ * @param  [type] $field       [description]
+ * @param  [type] $instance    [description]
+ * @param  [type] $langcode    [description]
+ * @param  [type] $items       [description]
+ * @param  [type] $display     [description]
+ * @return string of HTML markup
+ */
+function cvm_field_default_markup($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+
+  if (empty($items)) {
+    return t('No contextual view modes set.');
+  }
+
+  $data = array();
+  foreach ($items as $k => $opts) {
+    $data[] = t('When context') . " <strong>" . $opts['context'] . "</strong> " . t('is true display with view mode') . ": <strong>" . $opts['view_mode'] . "</strong>";
+  }
+
+  $output = theme_item_list(array(
+    'items'       => $data,
+    'type'        => 'ul',
+    'title'       => "",
+    'attributes'  => array()
+    )
+  );
+  return $output;
+}
+
+
+/**
+ * Implements hook_field_widget_info().
+ */
+function cvm_field_field_widget_info() {
+    return array(
+    'cvm_field_picker' => array(
+      'label' => t('Contextual View Modes Picker'),
+      'field types' => array('cvm_field_cvm'),
+      'settings' => array(
+        'progress_indicator' => 'throbber',
+      ),
+      'behaviors' => array(
+        'multiple values' => FIELD_BEHAVIOR_DEFAULT,
+        'default value' => FIELD_BEHAVIOR_NONE,
+      ),
+    ),
+  );
+}
+
+/**
+ * [cvm_field_field_widget_form description]
+ * @param  [type] $form       [description]
+ * @param  [type] $form_state [description]
+ * @param  [type] $field      [description]
+ * @param  [type] $instance   [description]
+ * @param  [type] $langcode   [description]
+ * @param  [type] $items      [description]
+ * @param  [type] $delta      [description]
+ * @param  [type] $element    [description]
+ * @return [type]
+ */
+function cvm_field_field_widget_form(&$form, &$form_state, $field, $instance, $langcode, $items, $delta, $element) {
+
+  // Get the available contexts for use in a select field.
+  $contexts = array('none' => '- Pick a context -');
+  $contexts += context_context_list();
+  foreach ($contexts as $key => $name) {
+    $contexts[$key] = ucwords(str_replace('_', " ", $name));
+  }
+
+  // Get the available view modes for use in a select field.
+  $ds_modes = ds_entity_view_modes('node');
+  $ds_modes_formatted = array('none' => '- None -');
+  foreach ($ds_modes as $name => $values) {
+    $ds_modes_formatted[$name] = ucwords(str_replace('_', " ", $values['label']));
+  }
+
+  //  //////////////////////////////////////////////////////////////////////////
+
+  $default_context = isset($items[$delta]['context']) ? $items[$delta]['context'] : '';
+  $default_view_mode = isset($items[$delta]['view_mode']) ? $items[$delta]['view_mode'] : '';
+  $widget = $element;
+  $widget['#delta'] = $delta;
+
+  $widget += array(
+    '#type' => 'fieldset',
+    '#element_validate' => array('cvm_field_picker_validate'),
+    '#delta' => $delta,
+    '#attached' => array(
+      'css' => array(drupal_get_path('module', 'cvm_field') . '/cvm_field.css'),
+    ),
+  );
+
+  $widget['context'] = array(
+    '#type' => 'select',
+    '#title' => t("When this context: "),
+    '#options' => $contexts,
+    '#default_value' => $default_context,
+  );
+
+  $widget['view_mode'] = array(
+    '#type' => 'select',
+    '#title' => t("Use this view mode: "),
+    '#options' => $ds_modes_formatted,
+    '#default_value' => $default_view_mode,
+  );
+
+  $element = $widget;
+  return $element;
+}
+
+/**
+ * [cvm_field_picker_validate description]
+ * @param  [type] $element       [description]
+ * @param  [type] $form_state [description]
+ * @return [type]             [description]
+ */
+function cvm_field_picker_validate($element, &$form_state) {
+  $delta = $element['#delta']; // TODO: Isn't there a better way to find out which element?
+  $field = $form_state['field'][$element['#field_name']][$element['#language']]['field'];
+  $field_name = $field['field_name'];
+  if (isset($form_state['values'][$field_name][$element['#language']][$delta]['cvm'])) {
+    // TODO: Check to see if there are multiple settings for a context...
+  }
+}
+
+/**
+ * Implements hook_field_widget_error().
+ *
+ * hook_field_widget_error() lets us figure out what to do with errors
+ * we might have generated in hook_field_validate(). Generally, we'll just
+ * call form_error().
+ *
+ * @see field_example_field_validate()
+ * @see form_error()
+ */
+function cvm_field_field_widget_error($element, $error, $form, &$form_state) {
+  switch ($error['error']) {
+    case 'cvm_field_invalid':
+      form_error($element, $error['message']);
+      break;
+  }
+}
